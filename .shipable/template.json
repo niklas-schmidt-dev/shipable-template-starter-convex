@@ -1,0 +1,13 @@
+{
+  "id": "starter-convex",
+  "name": "Starter App",
+  "description": "A Convex-backed React starter for realtime task flows and durable CRUD.",
+  "category": "General",
+  "tags": ["react", "tasks", "crud", "convex"],
+  "familyId": "starter",
+  "variantLabel": "Convex",
+  "sortOrder": 11,
+  "promptPlaceholder": "A realtime project tracker with tasks, columns, due dates, notes, and team updates.",
+  "preview": "",
+  "status": "active"
+}
