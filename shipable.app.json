@@ -1,0 +1,49 @@
+{
+  "schemaVersion": 2,
+  "name": "starter-convex",
+  "components": [
+    {
+      "id": "web",
+      "type": "frontend",
+      "source": {
+        "path": "."
+      },
+      "build": {
+        "packageManager": "npm",
+        "install": "npm install --include=dev --no-audit --no-fund",
+        "check": "npm run typecheck",
+        "command": "npm run build",
+        "output": "dist"
+      },
+      "env": [
+        {
+          "name": "VITE_CONVEX_URL",
+          "from": "component",
+          "component": "backend",
+          "property": "deploymentUrl"
+        }
+      ],
+      "dependsOn": [
+        "backend"
+      ]
+    },
+    {
+      "id": "backend",
+      "type": "backend",
+      "runtime": "convex",
+      "provider": "managed",
+      "source": {
+        "path": "convex",
+        "watch": [
+          "convex/**"
+        ]
+      }
+    }
+  ],
+  "routes": [
+    {
+      "component": "web",
+      "environment": "preview"
+    }
+  ]
+}
