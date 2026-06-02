@@ -42,27 +42,38 @@ function sanitizeTags(raw: string[] | undefined): string[] {
   return cleaned;
 }
 
-async function requireOwnerId(ctx: {
+type OwnerIdentityContext = {
   auth: { getUserIdentity: () => Promise<unknown> };
-}) {
+};
+
+function anonymousOwnerId(clientId: string): string {
+  const normalized = clientId.trim();
+  if (normalized.length < 8 || normalized.length > 128) {
+    throw new Error("Client identity is required");
+  }
+  return `anon:${normalized}`;
+}
+
+async function ownerIdForRequest(ctx: OwnerIdentityContext, clientId: string) {
   const identity = (await ctx.auth.getUserIdentity()) as
     | { subject?: string; tokenIdentifier?: string }
     | null;
   const ownerId = identity?.subject || identity?.tokenIdentifier;
-  if (!ownerId) {
-    throw new Error("Authentication required");
+  if (ownerId) {
+    return `auth:${ownerId}`;
   }
-  return ownerId;
+  return anonymousOwnerId(clientId);
 }
 
 export const list = query({
   args: {
+    clientId: v.string(),
     filter: v.optional(
       v.union(v.literal("all"), v.literal("open"), v.literal("done")),
     ),
   },
   handler: async (ctx, args) => {
-    const ownerId = await requireOwnerId(ctx);
+    const ownerId = await ownerIdForRequest(ctx, args.clientId);
     const filter = args.filter ?? "all";
     if (filter === "all") {
       return await ctx.db
@@ -83,9 +94,9 @@ export const list = query({
 });
 
 export const search = query({
-  args: { term: v.string() },
+  args: { clientId: v.string(), term: v.string() },
   handler: async (ctx, args) => {
-    const ownerId = await requireOwnerId(ctx);
+    const ownerId = await ownerIdForRequest(ctx, args.clientId);
     const term = args.term.trim();
     if (!term) return [];
     return await ctx.db
@@ -98,9 +109,9 @@ export const search = query({
 });
 
 export const stats = query({
-  args: { userTimezoneOffset: v.optional(v.number()) },
+  args: { clientId: v.string(), userTimezoneOffset: v.optional(v.number()) },
   handler: async (ctx, args) => {
-    const ownerId = await requireOwnerId(ctx);
+    const ownerId = await ownerIdForRequest(ctx, args.clientId);
     const all = await ctx.db
       .query("tasks")
       .withIndex("by_owner_created", (q) => q.eq("ownerId", ownerId))
@@ -108,7 +119,8 @@ export const stats = query({
     const now = Date.now();
     const offsetMs = (args.userTimezoneOffset ?? 0) * 60 * 1000;
     const localNow = now - offsetMs;
-    const startOfDay = Math.floor(localNow / 86_400_000) * 86_400_000 + offsetMs;
+    const startOfDay =
+      Math.floor(localNow / 86_400_000) * 86_400_000 + offsetMs;
     const endOfDay = startOfDay + 86_400_000;
 
     let total = 0;
@@ -127,7 +139,8 @@ export const stats = query({
         if (task.priority === "high") highPriority += 1;
         if (task.dueAt !== undefined) {
           if (task.dueAt < startOfDay) overdue += 1;
-          else if (task.dueAt >= startOfDay && task.dueAt < endOfDay) dueToday += 1;
+          else if (task.dueAt >= startOfDay && task.dueAt < endOfDay)
+            dueToday += 1;
         }
       }
     }
@@ -138,6 +151,7 @@ export const stats = query({
 
 export const create = mutation({
   args: {
+    clientId: v.string(),
     title: v.string(),
     notes: v.optional(v.string()),
     priority: v.optional(priorityValidator),
@@ -145,7 +159,7 @@ export const create = mutation({
     dueAt: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
-    const ownerId = await requireOwnerId(ctx);
+    const ownerId = await ownerIdForRequest(ctx, args.clientId);
     return await ctx.db.insert("tasks", {
       ownerId,
       title: sanitizeTitle(args.title),
@@ -161,6 +175,7 @@ export const create = mutation({
 
 export const update = mutation({
   args: {
+    clientId: v.string(),
     id: v.id("tasks"),
     title: v.optional(v.string()),
     notes: v.optional(v.string()),
@@ -169,7 +184,7 @@ export const update = mutation({
     dueAt: v.optional(v.union(v.number(), v.null())),
   },
   handler: async (ctx, args) => {
-    const ownerId = await requireOwnerId(ctx);
+    const ownerId = await ownerIdForRequest(ctx, args.clientId);
     const existing = await ctx.db.get(args.id);
     if (!existing || existing.ownerId !== ownerId) {
       throw new Error("Task not found");
@@ -187,9 +202,9 @@ export const update = mutation({
 });
 
 export const toggle = mutation({
-  args: { id: v.id("tasks") },
+  args: { clientId: v.string(), id: v.id("tasks") },
   handler: async (ctx, args) => {
-    const ownerId = await requireOwnerId(ctx);
+    const ownerId = await ownerIdForRequest(ctx, args.clientId);
     const existing = await ctx.db.get(args.id);
     if (!existing || existing.ownerId !== ownerId) {
       throw new Error("Task not found");
@@ -203,9 +218,9 @@ export const toggle = mutation({
 });
 
 export const remove = mutation({
-  args: { id: v.id("tasks") },
+  args: { clientId: v.string(), id: v.id("tasks") },
   handler: async (ctx, args) => {
-    const ownerId = await requireOwnerId(ctx);
+    const ownerId = await ownerIdForRequest(ctx, args.clientId);
     const existing = await ctx.db.get(args.id);
     if (!existing || existing.ownerId !== ownerId) return;
     await ctx.db.delete(args.id);
@@ -213,9 +228,9 @@ export const remove = mutation({
 });
 
 export const seed = mutation({
-  args: {},
-  handler: async (ctx) => {
-    const ownerId = await requireOwnerId(ctx);
+  args: { clientId: v.string() },
+  handler: async (ctx, args) => {
+    const ownerId = await ownerIdForRequest(ctx, args.clientId);
     const seedKey = `tasks_seeded:${ownerId}`;
     const existingSeed = await ctx.db
       .query("seeds")
@@ -241,7 +256,8 @@ export const seed = mutation({
     }> = [
       {
         title: "Map the onboarding review queue",
-        notes: "Confirm the first request states, owners, and handoff criteria.",
+        notes:
+          "Confirm the first request states, owners, and handoff criteria.",
         priority: "high",
         completed: false,
         tags: ["design", "ops"],
@@ -258,7 +274,8 @@ export const seed = mutation({
       },
       {
         title: "Draft launch announcement",
-        notes: "Keep it concise. Highlight: realtime sync, type-safety end-to-end, one command deploy.",
+        notes:
+          "Keep it concise. Highlight: realtime sync, type-safety end-to-end, one command deploy.",
         priority: "medium",
         completed: false,
         tags: ["writing"],

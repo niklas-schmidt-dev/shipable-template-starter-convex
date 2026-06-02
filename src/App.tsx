@@ -76,7 +76,23 @@ function applySort(tasks: ReadonlyArray<Task>, sort: SortKey): Task[] {
   }
 }
 
+function createAnonymousClientId() {
+  const fallback = () =>
+    `preview-${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
+  try {
+    const key = "shipable:convex-client-id";
+    const existing = window.localStorage.getItem(key);
+    if (existing) return existing;
+    const next = window.crypto?.randomUUID?.() ?? fallback();
+    window.localStorage.setItem(key, next);
+    return next;
+  } catch {
+    return fallback();
+  }
+}
+
 export default function App() {
+  const [clientId] = useState(createAnonymousClientId);
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
   const [priorityFilter, setPriorityFilter] = useState<PriorityFilter>("all");
   const [sortKey, setSortKey] = useState<SortKey>("created");
@@ -84,8 +100,11 @@ export default function App() {
   const deferredSearch = useDeferredValue(searchTerm);
   const userTimezoneOffset = new Date().getTimezoneOffset();
 
-  const tasks = useQuery(api.tasks.list, { filter: statusFilter });
-  const stats = useQuery(api.tasks.stats, { userTimezoneOffset });
+  const tasks = useQuery(api.tasks.list, { clientId, filter: statusFilter });
+  const stats = useQuery(api.tasks.stats, {
+    clientId,
+    userTimezoneOffset,
+  });
   const seed = useMutation(api.tasks.seed);
 
   const visibleTasks = useMemo<Task[] | null>(() => {
@@ -138,7 +157,7 @@ export default function App() {
           </section>
 
           <section className="control-stack" aria-label="Task controls">
-            <TaskForm />
+            <TaskForm clientId={clientId} />
 
             <div className="control-bar" role="region" aria-label="Filter tasks">
               <label className="search">
@@ -221,14 +240,14 @@ export default function App() {
               <EmptyState
                 hasAnyTasks={totalTasks > 0}
                 onSeed={async () => {
-                  await seed({});
+                  await seed({ clientId });
                 }}
               />
             ) : (
               <ul className="task-list">
                 {visibleTasks?.map((task) => (
                   <li key={task._id}>
-                    <TaskItem task={task} />
+                    <TaskItem clientId={clientId} task={task} />
                   </li>
                 ))}
               </ul>

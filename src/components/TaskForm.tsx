@@ -13,10 +13,11 @@ const PRIORITY_OPTIONS: ReadonlyArray<{
 ];
 
 type TaskFormProps = {
+  clientId: string;
   onCreated?: () => void;
 };
 
-export function TaskForm({ onCreated }: TaskFormProps) {
+export function TaskForm({ clientId, onCreated }: TaskFormProps) {
   const create = useMutation(api.tasks.create);
   const [title, setTitle] = useState("");
   const [notes, setNotes] = useState("");
@@ -50,6 +51,7 @@ export function TaskForm({ onCreated }: TaskFormProps) {
     setError(null);
     try {
       await create({
+        clientId,
         title: trimmed,
         notes: notes.trim() ? notes.trim() : undefined,
         priority,

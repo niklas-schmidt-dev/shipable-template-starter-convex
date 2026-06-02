@@ -28,10 +28,11 @@ const PRIORITY_LABEL: Record<Priority, string> = {
 };
 
 type TaskItemProps = {
+  clientId: string;
   task: Task;
 };
 
-export function TaskItem({ task }: TaskItemProps) {
+export function TaskItem({ clientId, task }: TaskItemProps) {
   const toggle = useMutation(api.tasks.toggle);
   const remove = useMutation(api.tasks.remove);
   const update = useMutation(api.tasks.update);
@@ -81,6 +82,7 @@ export function TaskItem({ task }: TaskItemProps) {
     setEditError(null);
     try {
       await update({
+        clientId,
         id: task._id,
         title: trimmed,
         notes: draftNotes,
@@ -105,7 +107,7 @@ export function TaskItem({ task }: TaskItemProps) {
   async function onToggle() {
     setActionError(null);
     try {
-      await toggle({ id: task._id });
+      await toggle({ clientId, id: task._id });
     } catch (error) {
       setActionError(
         error instanceof Error ? error.message : "Could not update task.",
@@ -116,7 +118,7 @@ export function TaskItem({ task }: TaskItemProps) {
   async function onDelete() {
     setActionError(null);
     try {
-      await remove({ id: task._id });
+      await remove({ clientId, id: task._id });
     } catch (error) {
       setActionError(
         error instanceof Error ? error.message : "Could not delete task.",
